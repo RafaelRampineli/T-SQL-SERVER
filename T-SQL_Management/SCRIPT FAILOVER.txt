@@ -1,0 +1,198 @@
+A manobra de Switch Role, no contexto de banco de dados espelhados, consiste na permutação da instância principal com a instância mirror. Desta forma, a antiga instância mirror se tornará a principal, enquanto a principal se tornará o novo mirror. 
+
+Algumas informações importantes de se conhecer ao se realizar uma manobra de Switch Role (SR):
+
+1 - Para conseguirmos utilizar o comando que irá realizar o SR, precisaremos antes deixar as bases em modo síncrono (Safety Mode). Neste modo, os logs são sincronizados e para cada commit na instância principal, ele deve também ser comitado na instância mirror. A performance neste modo é muito inferior ao assíncrono e por isso recomenda-se a utilizar a manobra de failover em momentos de pouca atividade do banco de dados.
+
+2 - Após o SR ser concluído com sucesso, deve-se retornar as bases para o modo assíncrono (High Performance). Se esquecer deste passo, a performance geral das bases será severamente comprometida.
+
+3 - Provavelmente nem todas as bases estarão disponíveis na outra instância e ações devem ser utilizadas para se certificar que tudo funcione corretamente. Um exemplo disso é a base GolsatArquivo que só existe em um datacenter. Antes de se realizar o failover, certifique-se que a base GolsatArquivo não está sendo utilizada através do seguinte comando:
+
+EXEC proc_AlterarViewsParticionamento @parUtilizarArquivo = 0
+
+4 - Até a data da produção deste documento, ainda não tínhamos implementado uma solução de DNS para o hostname do banco de dados. Portanto, se certifique que todas as aplicações irão apontar para o IP da nova database após a manobra.
+
+5 - A manobra de SR é utilizada quando ambas as instâncias (Principal e Mirror) estão funcionando corretamente. Quando o principal está offline e precisamos fazer com que a instância de mirror se torne o novo principal, devemos utilizar o comando SET PARTNER OFF e em seguida utilizar o RECOVERY da database para fazer com que a instância de mirror se torne independente e consiga receber conexões. Vale ressaltar que após este comando, somente será possível restabelecer o espelhamento restaurando um fullbackup da nova instância.
+
+Comando para remover a conexão de mirror
+
+ALTER DATABASE <database_name> SET PARTNER OFF
+
+Comando para realizar o RECOVERY da database
+
+RESTORE DATABASE <database_name> WITH RECOVERY;
+
+Scripts Úteis
+Script de Switch Role
+
+Neste script, ele irá setar automaticamente todas as bases para Safety Mode, esperar cada base síncronizar os logs, e então aplicar o SR. Um ponto de atenção importante é executar a última parte do script no novo principal. Esta parte consiste em gerar os comandos para retornar as bases para o modo High Performance novamente.
+
+/********************************************************************************************************************************************
+	Descrição: Script para realizar o Switch Role do servidor Principal para o servidor Mirror. Este script deve ser executando no servidor Principal e logo após, uma consulta SQL que está no final do script deve ser executada no novo Principal (antigo Mirror) e seu resultado executado novamente. Este script serve para manutençoes planejadas e os dois servidores devem estar em pleno funcionamento. Nao utilizar este script em caso de desastres. Após o Failver , executar a stored procedure proc_AlterarViewsParticionamento para inativar a database e Arquivo
+ 
+	Explicaçao: A primeira açao deste script é alterar todas as datanases para safety-mode, para que esta operaçao ocorra sem perda de dados. Em seguida, devemos ativar o Failover de cada uma das databases. Se o failover desta database falhar, provavelmente o Principal e o Mirror ainda estarao sincronizando, o script irá aguardar por um pequeno espaço de tempo para tentar novamente automaticamente. Ao realizar o Failover de cada database, sera necessário reativar o modo performance no novo Principal (antigo Mirror), caso isto nao ocorra, a performance no novo Principal será reduzida drasticamente.
+************************************************************************************************************************************************/
+USE [master]
+GO
+
+/**********************************************************************************************************************************************
+						ALTERANDO TODAS AS DATABASES PARA SAFETY MODE
+***********************************************************************************************************************************************/
+DECLARE @command NVARCHAR(MAX);
+DECLARE @dbname VARCHAR(MAX);
+DECLARE @execucaoOK SMALLINT;
+DECLARE cur_db_safety_mode CURSOR LOCAL FORWARD_ONLY STATIC READ_ONLY FOR
+	SELECT 
+	  'ALTER DATABASE [' + DB_NAME(database_id) + '] SET PARTNER SAFETY FULL;' AS cmd,
+	  DB_NAME(database_id) dbname
+	FROM master.sys.database_mirroring 
+	WHERE 1=1
+	AND mirroring_guid IS NOT NULL
+	AND mirroring_role_desc = 'PRINCIPAL'
+	AND mirroring_safety_level_desc = 'OFF';
+PRINT 'Alterando todas as databases para safety-mode...'
+OPEN cur_db_safety_mode
+FETCH NEXT FROM cur_db_safety_mode INTO @command, @dbname;
+WHILE @@fetch_status = 0
+BEGIN
+	EXECUTE sp_executesql @statement=@command;
+	PRINT 'Alteraçao safety-mode [OK] para database ['+@dbname+']'
+	FETCH NEXT FROM cur_db_safety_mode INTO @command, @dbname;
+END
+CLOSE cur_db_safety_mode;  
+DEALLOCATE cur_db_safety_mode;
+/****************************************************************************************************************************************************
+						REALIZAR FAILOVER DE CADA DATABASE
+****************************************************************************************************************************************************/
+DECLARE cur_db_failover CURSOR LOCAL FORWARD_ONLY STATIC READ_ONLY FOR
+	SELECT 
+	 'ALTER DATABASE [' + DB_NAME(database_id) + '] SET PARTNER FAILOVER;' cmd,
+		DB_NAME(database_id) dbname
+	FROM master.sys.database_mirroring 
+	WHERE 1=1
+	AND mirroring_guid IS NOT NULL
+	AND mirroring_role_desc = 'PRINCIPAL'
+	AND mirroring_safety_level_desc = 'FULL'
+	AND mirroring_state_desc = 'SYNCHRONIZED'
+	ORDER BY DB_NAME(database_id);
+OPEN cur_db_failover
+FETCH NEXT FROM cur_db_failover INTO @command, @dbname
+WHILE @@fetch_status = 0
+BEGIN
+	SET @execucaoOK = 1
+	WHILE @execucaoOK != 0
+	BEGIN
+		EXECUTE @execucaoOK = sp_executesql @statement=@command;
+		IF @execucaoOK = 0
+			PRINT 'Failover da database ['+@dbname+'] foi realizado com sucesso!'
+		ELSE
+		BEGIN
+			PRINT 'Nao foi possível fazer failover...Aguardando Mirror e Principal da database [' + @dbname + '] sincronizarem para tentarmos novamente...'
+			WAITFOR DELAY '00:00:03' --Aguardar 3 segundos para tentar denovo...
+		END
+ 
+	END
+	FETCH NEXT FROM cur_db_failover INTO @command, @dbname;
+END
+CLOSE cur_db_failover;
+DEALLOCATE cur_db_failover;
+PRINT 'Failover geral do servidor realizado com sucesso!'
+PRINT 'ATENÇAO!! Altere o modo de execuçao para performance-mode no novo Principal!'
+/******************************************************************************************************************************************************
+							EXECUTAR O SQL ABAIXO NO NOVO PRINCIPAL
+******************************************************************************************************************************************************/
+--SELECT 
+--  'ALTER DATABASE [' + DB_NAME(database_id) + '] SET PARTNER SAFETY OFF;'
+--  AS command_to_set_mirrored_database_to_use_synchronous_mirroring_mode
+--FROM master.sys.database_mirroring 
+--WHERE 1=1
+--AND mirroring_guid IS NOT NULL
+--AND mirroring_role_desc = 'PRINCIPAL'
+--AND mirroring_safety_level_desc = 'FULL'
+--ORDER BY DB_NAME(database_id);
+
+
+Habilitar e Desabilitar Database de Arquivo
+Quando realizamos failover, é necessário de antemão desativar o uso do arquivo. Após a manobra precisamos reativá-lo.
+
+Antes:
+
+EXEC proc_AlterarViewsParticionamento @parUtilizarArquivo = 0
+Depois:
+
+EXEC proc_AlterarViewsParticionamento @parUtilizarArquivo = 1
+
+Autofix de usuários
+Se os usuários na instância mirror não foram cadastrados através de export de usuários do Sql Server da instância principal, será necessários utilizar um comando de autofix para fazer com que estes usuários funcionem corretamente. Este comando deve ser executado em cada uma das databases.
+
+SELECT 'EXEC sp_change_users_login ''auto_fix'', ' + CHAR(39) + name + CHAR(39) + + CHAR(13) + CHAR(10)+ 'GO'
+FROM sys.sysusers
+WHERE islogin = 1 and issqluser =1 and hasdbaccess = 1 and sid > 0x01
+
+Gerar Scripts de Restauração
+
+Para iniciar um mirror precisamos nos certificar que as bases não estão abertas, ou seja, foram restauradas com o comando WITH NORECOVERY. Precisamos também manter a base restaurada atualizada em relação a base principal. Se o restore for muito antigo, não conseguiremos ativar o mirror. Por isso, precisaremos aplicar os LOGs para trazer a base restaurada para a sua versão mais recente possível. Segue script para gerar comandos restore database e restore log em relação ao último backup gerado. Deve ser executada na base principal.
+
+USE Golsat;
+
+DECLARE @databaseName sysname
+DECLARE @backupStartDate datetime
+DECLARE @backup_set_id_start INT
+DECLARE @backup_set_id_end INT
+DECLARE @Restore_na_Persys BIT = 1
+
+-- set database to be used
+SET @databaseName = 'Golsat' 
+
+SELECT @backup_set_id_start = MAX(backup_set_id) 
+FROM  msdb.dbo.backupset 
+WHERE database_name = @databaseName AND type = 'D'
+
+SELECT @backup_set_id_end = MIN(backup_set_id) 
+FROM  msdb.dbo.backupset 
+WHERE database_name = @databaseName AND type = 'D'
+AND backup_set_id > @backup_set_id_start
+
+IF @backup_set_id_end IS NULL SET @backup_set_id_end = 999999999
+
+SELECT backup_set_id, 'RESTORE DATABASE ' + @databaseName + ' FROM DISK = ''' 
+               + CASE WHEN @Restore_na_Persys = 1 THEN 
+ REPLACE(mf.physical_device_name,'10.20.250.165','172.20.251.165')
+  ELSE mf.physical_device_name END + ''' WITH NORECOVERY'
+FROM    msdb.dbo.backupset b,
+           msdb.dbo.backupmediafamily mf
+WHERE    b.media_set_id = mf.media_set_id
+           AND b.database_name = @databaseName
+          AND b.backup_set_id = @backup_set_id_start
+UNION
+SELECT backup_set_id, 'RESTORE LOG ' + @databaseName + ' FROM DISK = ''' 
+               + CASE WHEN @Restore_na_Persys = 1 THEN 
+ REPLACE(mf.physical_device_name,'10.20.250.165','172.20.251.165')
+  ELSE mf.physical_device_name END + ''' WITH NORECOVERY'
+FROM    msdb.dbo.backupset b,
+           msdb.dbo.backupmediafamily mf
+WHERE    b.media_set_id = mf.media_set_id
+           AND b.database_name = @databaseName
+          AND b.backup_set_id >= @backup_set_id_start AND b.backup_set_id < @backup_set_id_end
+          AND b.type = 'L'
+
+
+
+
+Criar Endpoint para Utilização no Mirror
+Para criar um novo mirror, a instância precisa ter um endpoint configurado. Utilize este script para criar um novo endpoint de acordo com nossas configurações.
+
+-- Criar endpoint do Mirror
+
+CREATE ENDPOINT [Mirroring] 
+	AUTHORIZATION [sa]
+	STATE=STARTED
+	AS TCP (LISTENER_PORT = 5022, LISTENER_IP = ALL)
+	FOR DATA_MIRRORING (ROLE = PARTNER, AUTHENTICATION = WINDOWS NEGOTIATE
+, ENCRYPTION = DISABLED)
+GO
+
+-- Criar usuário se este ainda não tiver criado
+-- CREATE LOGIN [NT AUTHORITY\ANONYMOUS LOGON] FROM WINDOWS WITH DEFAULT_DATABASE = [master]
+
+ GRANT CONNECT ON ENDPOINT::Mirroring TO [NT AUTHORITY\ANONYMOUS LOGON];
