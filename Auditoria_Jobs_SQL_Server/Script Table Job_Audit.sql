@@ -1,0 +1,15 @@
+CREATE TABLE [dbo].[Job_Audit](
+    [Id_Auditoria] [INT] IDENTITY(1,1) NOT NULL,
+    [Dt_Evento] [DATETIME] NULL DEFAULT (GETDATE()),
+    [Ds_Usuario] [VARCHAR](50) NULL,
+    [Ds_Job] [sysname] NULL,
+    [Ds_Hostname] [VARCHAR](50) NULL,
+    [Ds_Query] [VARCHAR](MAX) NULL,
+    [Fl_Situacao] [TINYINT] NULL,
+PRIMARY KEY CLUSTERED 
+(
+    [Id_Auditoria] ASC
+) WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
+) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
+
+SELECT * FROM [Job_Audit]
