@@ -20,6 +20,15 @@ GO
 
 */
 
+/*
+PRINT '##### RESTAURANDO FULL DO DIA: 2021-02-07T02:26:08 #####' RESTORE DATABASE SIG FROM DISK = '\\bkp-onsite.gs.interno\db\backup\DB_diario\backup_SQL\SIG\SIG_backup_2021_02_06_230001_2319185.bak' WITH NORECOVERY
+PRINT '##### RESTAURANDO FULL DO DIA: 2021-02-07T02:25:19 #####' RESTORE DATABASE GolsatMonitoramento FROM DISK = '\\bkp-onsite.gs.interno\db\backup\DB_diario\backup_SQL\GolsatMonitoramento\GolsatMonitoramento_backup_2021_02_06_230001_2319185.bak' WITH NORECOVERY
+PRINT '##### RESTAURANDO FULL DO DIA: 2021-02-07T02:25:34 #####' RESTORE DATABASE GolsatWebCharts FROM DISK = '\\bkp-onsite.gs.interno\db\backup\DB_diario\backup_SQL\GolsatWebCharts\GolsatWebCharts_backup_2021_02_06_230001_2319185.bak' WITH NORECOVERY
+PRINT '##### RESTAURANDO FULL DO DIA: 2021-02-07T02:25:40 #####' RESTORE DATABASE MonitoraDBA FROM DISK = '\\bkp-onsite.gs.interno\db\backup\DB_diario\backup_SQL\MonitoraDBA\MonitoraDBA_backup_2021_02_06_230001_2319185.bak' WITH NORECOVERY
+PRINT '##### RESTAURANDO FULL DO DIA: 2021-02-07T02:25:49 #####' RESTORE DATABASE PortalCondutor FROM DISK = '\\bkp-onsite.gs.interno\db\backup\DB_diario\backup_SQL\PortalCondutor\PortalCondutor_backup_2021_02_06_230001_2319185.bak' WITH NORECOVERY
+*/
+
+
 DECLARE @databaseName sysname
 DECLARE @backupStartDate DATETIME
 DECLARE @backupEndDate DATETIME
@@ -28,7 +37,7 @@ DECLARE @backup_set_id_end INT
 DECLARE @UseDIFFBackup BIT = 0
 
 -- Configura o nome do Backup
-SET @databaseName		= 'DATABASE' 
+SET @databaseName		= 'PortalCondutor' 
 SET @backupStartDate	= NULL -- Valor NULL Considera ultimo Backup Full Realizado / Quando Preenchido busca último FULL antes da respectiva Data
 SET @backupEndDate		= DATEADD(YEAR,1,GETDATE())
 
