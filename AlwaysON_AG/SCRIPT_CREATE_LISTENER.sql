@@ -1,0 +1,9 @@
+USE [master]
+GO
+ALTER AVAILABILITY GROUP [Workgroup_AG]
+ADD LISTENER N'Listener_AG' (
+WITH IP
+((N'<IP>', N'255.255.255.0')
+)
+, PORT=1433);
+GO
