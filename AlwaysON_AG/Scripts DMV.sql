@@ -1,7 +1,4 @@
-use sig
-
-select top 10 * from tabinstalacao
-
+use master
 
 select * from sys.dm_hadr_database_replica_cluster_states
 
