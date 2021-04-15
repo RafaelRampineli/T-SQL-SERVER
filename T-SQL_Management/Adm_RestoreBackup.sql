@@ -18,6 +18,8 @@ Verificar os files que existem no backup
 RESTORE FILELISTONLY FROM DISK = ''
 GO
 
+WITH NORECOVERY, MAXTRANSFERSIZE = 4194304, BUFFERCOUNT= 1000, STATS=5
+
 */
 
 DECLARE @databaseName sysname
