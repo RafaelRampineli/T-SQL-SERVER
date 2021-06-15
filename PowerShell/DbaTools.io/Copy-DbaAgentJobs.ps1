@@ -1,4 +1,4 @@
-﻿$OldInstance = 'localhost\MSSQLSERVER'
+﻿$OldInstance = 'localhost\MSSQLSERVER' 
 $NewInstance = 'localhost\MSSQLSERVER'
 
 # Export current jobs to scripts
