@@ -42,7 +42,7 @@ END
 GO
 
 
---DECLARE @dbname nvarchar(128) = 'SIG'
+--DECLARE @dbname nvarchar(128) = ''
 
 ---- SE A BASE PRINCIPAL NÃO FOR A RÉPLICA PRIMÁRIA DÁ ERRO NO JOB E CANCELA AS EXECUÇÕES 
 --If sys.fn_hadr_is_primary_replica (@dbname) <> 1   
