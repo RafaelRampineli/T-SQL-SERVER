@@ -3,7 +3,7 @@ go
  
 DECLARE @jobname NVARCHAR(MAX)
 
--- N√O FAZ NADA CASO N√O EXISTA AG CONFIGURADO
+-- N√ÉO FAZ NADA CASO N√ÉO EXISTA AG CONFIGURADO
 IF SERVERPROPERTY ('IsHadrEnabled') = 1
 BEGIN
     DECLARE @jobid UNIQUEIDENTIFIER = (SELECT sj.job_id FROM msdb.dbo.sysjobs sj WHERE sj.name = @jobname)
@@ -42,9 +42,9 @@ END
 GO
 
 
---DECLARE @dbname nvarchar(128) = 'SIG'
+--DECLARE @dbname nvarchar(128) = ''
 
----- SE A BASE PRINCIPAL (GOLSAT) N√O FOR A R…PLICA PRIM¡RIA D¡ ERRO NO JOB E CANCELA AS EXECU«’ES 
+---- SE A BASE PRINCIPAL N√ÉO FOR A R√âPLICA PRIM√ÅRIA D√Å ERRO NO JOB E CANCELA AS EXECU√á√ïES 
 --If sys.fn_hadr_is_primary_replica (@dbname) <> 1   
 --BEGIN 
 --   -- Secondary node, throw an error
