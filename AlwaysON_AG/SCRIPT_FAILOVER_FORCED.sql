@@ -1,25 +1,64 @@
 USE MASTER
 GO
 
-DECLARE @AVAILABILITY_GROUP VARCHAR(200) = 'WorkGroup_AG'
+DECLARE @AVAILABILITY_GROUP VARCHAR(200) = 'AG_Name'
 
 /*-----------------------------------------------------------------------------------------------------------------------------------------------------------
-VERIFICAR SE O CLUSTER QUE IR¡ RECEBER O FAIOLVER EST¡ HEALTH AND UP (… POSSÕVEL VERIFICAR ATRAV…S DO CLUSTER MANAGEMENT
+VERIFICAR SE O CLUSTER QUE IR√Å RECEBER O FAIOLVER EST√Å HEALTH AND UP (√â POSS√çVEL VERIFICAR ATRAV√âS DO CLUSTER MANAGEMENT
 -----------------------------------------------------------------------------------------------------------------------------------------------------------*/
 SELECT * FROM sys.dm_hadr_cluster_members
 
 
-
 /*----------------------------------------------------------------------------------------------------------------------------------------------------------- 
-EXECUTAR O COMANDO NA REPLICA SECUND¡RIA QUE IR¡ ASSUMIR A FUN«√O PRIM¡RIA 
+EXECUTAR O COMANDO NA REPLICA SECUND√ÅRIA QUE IR√Å ASSUMIR A FUN√á√ÉO PRIM√ÅRIA 
 -----------------------------------------------------------------------------------------------------------------------------------------------------------*/
 SELECT 'ALTER AVAILABILITY GROUP ' + @AVAILABILITY_GROUP + ' FORCE_FAILOVER_ALLOW_DATA_LOSS;'  
 
 
 
 /*----------------------------------------------------------------------------------------------------------------------------------------------------------- 
-QUANDO A ANTIGA REPLICA PRIM¡RIA FICAR ONLINE, ELA IR¡ SUBIR COMO UMA REPLICA SECUND¡RIA, POR…M OS DADOS N√O SER√O SINCRONIZADOS AUTOMATICAMENTE.
-… NECESS¡RIO APLICAR UM RESUME NO ALWAYSON DE CADA BASE DE DADOS 
+PODE OCORRER DE ALGUMA BASE QUE N√ÉO ESTAVA SINCRONIZADA NO MOMENTO DO FAILOVER FORCED ENTRAR NO STATUS DE RECOVERING/SUSPECT. 
+ESSE √â UM CEN√ÅRIO CA√ìTICO E ALGUMAS ABORDAGENS PODEM SER REALIZADAS:
+https://docs.microsoft.com/pt-br/troubleshoot/sql/availability-groups/alwayson-availability-databases-recovery-pending-suspect
+----------------------------------------------------------------------------------------------------------------------------------------------------------- */
+
+SELECT 'ALTER AVAILABILITY GROUP ' + @AVAILABILITY_GROUP + ' REMOVE DATABASE ' + NAME + ';'
+FROM sys.databases
+WHERE NAME NOT IN ('master', 'tempdb', 'model','msdb')
+
+SELECT 'ALTER DATABASE ' + NAME + ' SET EMERGENCY;'
+FROM sys.databases
+WHERE NAME NOT IN ('master', 'tempdb', 'model','msdb')
+
+SELECT 'ALTER DATABASE ' + NAME + ' SET SINGLE_USER WITH ROLLBACK IMMEDIATE;'
+FROM sys.databases
+WHERE NAME NOT IN ('master', 'tempdb', 'model','msdb')
+
+SELECT 'DBCC CHECKDB ('+NAME+', REPAIR_ALLOW_DATA_LOSS);'
+FROM sys.databases
+WHERE NAME NOT IN ('master', 'tempdb', 'model','msdb')
+
+SELECT 'ALTER DATABASE ' + NAME + ' SET MULTI_USER;'
+FROM sys.databases
+WHERE NAME NOT IN ('master', 'tempdb', 'model','msdb')
+
+SELECT 'ALTER DATABASE ' + NAME + ' SET ONLINE;'
+FROM sys.databases
+WHERE NAME NOT IN ('master', 'tempdb', 'model','msdb')
+
+/*
+AP√ìS A EXECU√á√ÉO DOS COMANDOS E A BASE ESTIVER DISPONIVEL PARA ACESSO, SER√Å NECESS√ÅRIO ALGUMAS ETAPAS:
+1. ALTERAR A BASE PARA MODO RECOVERY FULL;
+2. REALIZAR UM BACKUP FULL;
+3. REALIZAR UM BACKUP TRANSACIONAL;
+4. ADICIONAR A BASE DE VOLTA AO AVAILABILITY GROUP;
+5. ADICIONAR A BASE DE VOLTA AO AVAILABLITITY GROUP NA REPLICA SECUND√ÅRIA;
+*/
+
+
+/*----------------------------------------------------------------------------------------------------------------------------------------------------------- 
+QUANDO A ANTIGA REPLICA PRIM√ÅRIA FICAR ONLINE, ELA IR√Å SUBIR COMO UMA REPLICA SECUND√ÅRIA, POR√âM OS DADOS N√ÉO SER√ÉO SINCRONIZADOS AUTOMATICAMENTE.
+√â NECESS√ÅRIO APLICAR UM RESUME NO ALWAYSON DE CADA BASE DE DADOS 
 -----------------------------------------------------------------------------------------------------------------------------------------------------------*/
 SELECT 'ALTER DATABASE ' + NAME + ' SET HADR RESUME;' 
 FROM sys.databases
@@ -29,10 +68,10 @@ WHERE NAME NOT IN ('master', 'tempdb', 'model','msdb')
 
 
 /*-----------------------------------------------------------------------------------------------------------------------------------------------------------
-	PODE OCORRER DA ANTIGA R…PLICA PRIM¡RIA DEMORAR MUITO TEMPO PARA FICAR ONLINE. 
-	ESSA DEMORA PODE IMPACTAR NO TANTO DE LOG QUE SER¡ ARMAZENADO E CAUSAR UM CRESCIMENTO DE ESPA«O UTILIZADO NOS DISCOS.
+	PODE OCORRER DA ANTIGA R√âPLICA PRIM√ÅRIA DEMORAR MUITO TEMPO PARA FICAR ONLINE. 
+	ESSA DEMORA PODE IMPACTAR NO TANTO DE LOG QUE SER√Å ARMAZENADO E CAUSAR UM CRESCIMENTO DE ESPA√áO UTILIZADO NOS DISCOS.
 	
-	ANALISAR A CONDI«√O E CASO SEJA NECESS¡RIO, REMOVER A(s) BASE DE DADOS DO AVAILABILITY GROUPS E REFAZER QUANDO A R…PLICA ESTIVER ONLINE.
+	ANALISAR A CONDI√á√ÉO E CASO SEJA NECESS√ÅRIO, REMOVER A(s) BASE DE DADOS DO AVAILABILITY GROUPS E REFAZER QUANDO A R√âPLICA ESTIVER ONLINE.
 -----------------------------------------------------------------------------------------------------------------------------------------------------------*/
 SELECT 'ALTER AVAILABILITY GROUP ' + @AVAILABILITY_GROUP + ' REMOVE DATABASE ' + NAME + ';'
 FROM sys.databases
