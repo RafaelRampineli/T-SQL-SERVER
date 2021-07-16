@@ -1,0 +1,14 @@
+USE master;
+
+ALTER AVAILABILITY GROUP <AG_NAME>
+   SET (
+      DTC_SUPPORT = PER_DB  
+      );
+
+
+/*REMOVER DTC AG */
+
+ALTER AVAILABILITY GROUP <AG_NAME>
+   SET (
+      DTC_SUPPORT = NONE
+      );
