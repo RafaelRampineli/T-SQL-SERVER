@@ -38,10 +38,10 @@ foreach ($ServerName in $ServerNameList)
     $srv = New-Object "Microsoft.SqlServer.Management.Smo.Server" $ServerName
     
     # Arquivo único com todos os jobs
-    # $srv.JobServer.Jobs | foreach {$_.Script() + "GO`r`n"} | out-file "$OutputFolder\jobs.sql"
+    $srv.JobServer.Jobs | foreach {$_.Script() + "GO`r`n"} | out-file "$OutputFolder\jobs.sql"
 
     # Um arquivo por job
-    $srv.JobServer.Jobs | foreach-object -process {out-file -filepath $("$OutputFolder\" + $($_.Name -replace "\\", "") + ".sql") -inputobject $_.Script() }
+    #$srv.JobServer.Jobs | foreach-object -process {out-file -filepath $("$OutputFolder\" + $($_.Name -replace "\\", "") + ".sql") -inputobject $_.Script() }
 
 }
 
